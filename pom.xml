@@ -2,10 +2,15 @@
 
 <project  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0" >
  <dependencies>
+     <dependency>
+         <groupId>org.hornetq</groupId>
+         <artifactId>hornetq-core</artifactId>
+         <version>2.2.21.Final</version>
+     </dependency>
     <dependency>
       <groupId>com.datomic</groupId>
-      <artifactId>datomic-free</artifactId>
-      <version>0.9.5350</version>
+      <artifactId>datomic-pro</artifactId>
+      <version>1.0.6165</version>
       <exclusions>
         <exclusion>
           <groupId>org.slf4j</groupId>
@@ -25,10 +30,12 @@
  </dependencies>
  <version>0.0</version>
  <groupId>com.datomic</groupId>
- <name>datomic-java-examples</name>
- <artifactId>datomic-java-examples</artifactId>
+ <name>datomic-kotlin-examples</name>
+ <artifactId>datomic-kotlin-examples</artifactId>
  <properties>
-  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+     <maven.compiler.source>1.8</maven.compiler.source>
+     <maven.compiler.target>1.8</maven.compiler.target>
  </properties>
  <modelVersion>4.0.0</modelVersion>
  <build>

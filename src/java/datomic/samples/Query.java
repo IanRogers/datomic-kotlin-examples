@@ -17,7 +17,7 @@ public class Query {
     public static void main(String[] args) {
 
         // Your connection information for local mbrainz 1968-1973 subset goes here.
-        String uri = "datomic:free://localhost:4334/mbrainz-1968-1973";
+        String uri = "datomic:dev://localhost:4334/mbrainz-1968-1973";
 
         // Connect to transactor, get latest database value from storage.
         Connection conn = Peer.connect(uri);

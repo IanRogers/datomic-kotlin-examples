@@ -1,20 +1,7 @@
-## Datomic Java Examples
+## Datomic Kotlin Examples
 
-Code examples for [Datomic's Java API](http://docs.datomic.com/javadoc/index.html).
-
-## Questions, Feedback?
-
-For specific feedback on the examples, please create an
-[issue](https://github.com/Datomic/datomic-java-examples/issues). 
-
-For questions about Datomic, try the [public mailing
-list](http://groups.google.com/group/datomic).
-
-## Contributing
-
-This library is developed internally by Cognitect. Issues can be filed using
-[Github Issues](https://github.com/Datomic/datomic-java-examples/issues). We do
-not accept pull request or patches.
+A fork of [Datomic Java Examples](https://github.com/Datomic/datomic-java-examples) but Kotlinised in 
+places as I play with it...
 
 ## License
 
