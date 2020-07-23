@@ -2,7 +2,6 @@ package datomic.samples
 
 import io.kotest.core.spec.style.AnnotationSpec
 import io.kotest.matchers.collections.shouldBeIn
-import io.kotest.matchers.shouldBe
 
 class AnnotationSpecExample : AnnotationSpec() {
     @Test

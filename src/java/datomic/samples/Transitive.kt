@@ -1,12 +1,16 @@
 package datomic.samples
 
+import clojure.lang.RT
+import clojure.lang.Symbol
+import datomic.Database
+import datomic.Datom
 import datomic.Peer
 import datomic.Util
 import java.util.*
 
 /*
 A rewrite of parts of https://hashrocket.com/blog/posts/using-datomic-as-a-graph-database but in
-Kotlin and using the mbrainz dataset https://github.com/Datomic/mbrainz-sample
+Kotlin and using the mbrainz dataset and rules https://github.com/Datomic/mbrainz-sample
  */
 object Transitive {
     val rulessrc = """
@@ -119,25 +123,94 @@ object Transitive {
           [?a2 :artist/name ?artist-name-2]]]
     """.trimIndent()
 
-    fun shortestPath(start: String, end: String, neighbors: (String) -> List<String>) : List<String>? {
+    /*
+    Given a track ID what are the IDs of the artists on that track?
+     */
+
+    private val VAET:Any = Util.read(":vaet")
+    private val EAVT:Any = Util.read(":eavt")
+    private val track_artists:Any = Util.read(":track/artists")
+    fun datums(db: Database, index: Any, value: Any, attr: Any) : Iterable<Any> {
+
+        // TODO move these out to an efficient place
+        val REQUIRE = RT.`var`("clojure.core", "require")
+        REQUIRE.invoke(Symbol.intern("datomic.api"))
+        val DATOMS = RT.`var`("datomic.api", "datoms")
+
+        val ret = DATOMS.invoke(db, index, value, attr)
+        return if (ret is Iterable<*>) {
+            ret.map { when (it) {
+                is Datom -> it.e()
+                else -> throw Exception("heck knows what this is: $it")
+            } }
+        } else {
+            throw Exception("heck knows what this is: $ret")
+        }
+    }
+
+    // dig out values from datoms
+    fun artists(db: Database, id: Any) = datums(db, EAVT, id, track_artists)
+
+    // dig out entities from datoms
+    fun tracks(db: Database, id: Any) = datums(db, VAET, id, track_artists)
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val conn = Peer.connect("datomic:dev://localhost:4334/mbrainz-1968-1973")
+        val db = conn.db()
+
+        fun aid(name: String) = Peer.q("[:find ?e :in $ ?name :where [?e :artist/name ?name]]", db, name).first().first()
+        val georgeharrison = aid("George Harrison")
+        val dianaross = aid("Yvette Mimieux")
+
+        println("georgeharrison: $georgeharrison")
+        val tracks = tracks(db, georgeharrison)
+        println("tracks of georgeharrison: $tracks")
+        val artists = artists(db, tracks.first())
+        println("artists of first track: $artists")
+
+        println("artists of first track (datalog): " + Peer.q(
+                "[:find ?a :in $ ?t :where [?t :track/artists ?a]]",
+                db, tracks.last()
+        ))
+
+        val tracks2 = Peer.q(
+                "[:find ?tracks :in $ ?artist-id :where [?tracks :track/artists ?artist-id]]",
+                db, georgeharrison
+        )
+
+        fun at_neighbors(id:Any) : Iterable<Any> {
+            val n1 = artists(db, id)
+            return if (n1.count() != 0) {
+                n1
+            } else {
+                tracks(db, id)
+            }
+        }
+
+        val path = shortestPath(georgeharrison, dianaross, {at_neighbors(it)})
+        println(path)
+    }
+
+    fun <N> shortestPath(start: N, end: N, neighbors: (N) -> Iterable<N>): List<N>? {
         val seenitstart = mutableMapOf(start to listOf(start))
         val seenitend = mutableMapOf(end to listOf(end));
         val qs = LinkedList(listOf(start))
         val qe = LinkedList(listOf(end))
 
-        fun cons(item: String, list:List<String>) : List<String> {
-            // not memory efficient as we don't have closure-like persistent data structures, but the lists won't be long
-            val coll = ArrayList<String>(list.size + 1)
+        fun cons(item: N, list: List<N>): List<N> {
+            // not memory efficient as we don't have clojure-like persistent data structures, but the lists won't be long
+            val coll = ArrayList<N>(list.size + 1)
             coll.add(item)
             coll.addAll(list)
             return coll
         }
 
         fun takestep(
-                qworking: LinkedList<String>,
-                seenworking: MutableMap<String, List<String>>,
-                seenother: MutableMap<String, List<String>>
-        ) : List<String>? {
+                qworking: LinkedList<N>,
+                seenworking: MutableMap<N, List<N>>,
+                seenother: MutableMap<N, List<N>>
+        ) : List<N>? {
             val item = qworking.pop()
             if (seenother.contains(item)) {
                 return seenworking[item]!!.reversed().plus(seenother[item]!!.drop(1))
@@ -168,7 +241,7 @@ object Transitive {
     }
 
     @JvmStatic
-    fun main(args: Array<String>) {
+    fun t(args: Array<String>) {
         val conn = Peer.connect("datomic:dev://localhost:4334/mbrainz-1968-1973")
         val db = conn.db()
         val rules = Util.readAll(rulessrc.reader())[0]
@@ -188,5 +261,7 @@ object Transitive {
                 "[:find ?aname ?aname2 :in $ % ?aname :where (collab-net-3 ?aname ?aname2)]",
                 db, rules, "George Harrison"
         ))
+
+        // TODO: make a neighbors function that can bounce artist-album-artis
     }
 }
