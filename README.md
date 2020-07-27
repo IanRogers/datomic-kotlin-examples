@@ -1,7 +1,7 @@
 ## Datomic Kotlin Examples
 
 A fork of [Datomic Java Examples](https://github.com/Datomic/datomic-java-examples) but Kotlinised in 
-places as I play with it...  Very much WIP... 
+places as I play with it. 
 
 ## License
 

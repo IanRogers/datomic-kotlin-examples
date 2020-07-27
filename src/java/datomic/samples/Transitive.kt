@@ -123,83 +123,50 @@ object Transitive {
           [?a2 :artist/name ?artist-name-2]]]
     """.trimIndent()
 
-    /*
-    Given a track ID what are the IDs of the artists on that track?
-     */
-
-    private val VAET:Any = Util.read(":vaet")
-    private val EAVT:Any = Util.read(":eavt")
-    private val track_artists:Any = Util.read(":track/artists")
-    fun datums(db: Database, index: Any, value: Any, attr: Any) : Iterable<Any> {
-
-        // TODO move these out to an efficient place
-        val REQUIRE = RT.`var`("clojure.core", "require")
+    val REQUIRE = RT.`var`("clojure.core", "require")
+    val DATOMS by lazy {
         REQUIRE.invoke(Symbol.intern("datomic.api"))
-        val DATOMS = RT.`var`("datomic.api", "datoms")
+        RT.`var`("datomic.api", "datoms")
+    }
 
+    val VAET = Util.read(":vaet")
+    val EAVT = Util.read(":eavt")
+    val TRACK_ARTISTS = Util.read(":track/artists")
+    val ARTIST_NAME = Util.read(":artist/name")
+    val TRACK_NAME = Util.read(":track/name")
+
+    // Some utility functions to access the datomic store directly
+    //
+
+    fun datoms(db: Database, index: Any, value: Any, attr: Any) : Iterable<Datom> {
         val ret = DATOMS.invoke(db, index, value, attr)
-        return if (ret is Iterable<*>) {
-            ret.map { when (it) {
-                is Datom -> it.e()
-                else -> throw Exception("heck knows what this is: $it")
-            } }
-        } else {
-            throw Exception("heck knows what this is: $ret")
+        if (ret !is Iterable<*>) {
+            throw Exception("This should be a Iterable<Datom> but it's not: $ret")
         }
+        return ret as Iterable<Datom>
     }
+    fun attr(db: Database, id: Any, attr: Any) = datoms(db, EAVT, id, attr).map {it.v()}.firstOrNull()
 
-    // dig out values from datoms
-    fun artists(db: Database, id: Any) = datums(db, EAVT, id, track_artists)
+    // Given an artist ID what are the IDs of the tracks they were involved with
+    fun artists(db: Database, id: Any) = datoms(db, EAVT, id, TRACK_ARTISTS).map {it.v()}
+    // Given a track ID what are the IDs of the artists on that track
+    fun tracks(db: Database, id: Any) = datoms(db, VAET, id, TRACK_ARTISTS).map {it.e()}
+    // if id is an artist then get their tracks; if it's a track then get the artists
+    fun at_neighbors(db: Database, id: Any) = artists(db, id).ifEmpty { tracks(db, id) }
+    // What is then name value of an item (track or artist)
+    fun item_name(db: Database, id: Any) = attr(db, id, ARTIST_NAME) ?: attr(db, id, TRACK_NAME)
 
-    // dig out entities from datoms
-    fun tracks(db: Database, id: Any) = datums(db, VAET, id, track_artists)
-
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val conn = Peer.connect("datomic:dev://localhost:4334/mbrainz-1968-1973")
-        val db = conn.db()
-
-        fun aid(name: String) = Peer.q("[:find ?e :in $ ?name :where [?e :artist/name ?name]]", db, name).first().first()
-        val georgeharrison = aid("George Harrison")
-        val dianaross = aid("Yvette Mimieux")
-
-        println("georgeharrison: $georgeharrison")
-        val tracks = tracks(db, georgeharrison)
-        println("tracks of georgeharrison: $tracks")
-        val artists = artists(db, tracks.first())
-        println("artists of first track: $artists")
-
-        println("artists of first track (datalog): " + Peer.q(
-                "[:find ?a :in $ ?t :where [?t :track/artists ?a]]",
-                db, tracks.last()
-        ))
-
-        val tracks2 = Peer.q(
-                "[:find ?tracks :in $ ?artist-id :where [?tracks :track/artists ?artist-id]]",
-                db, georgeharrison
-        )
-
-        fun at_neighbors(id:Any) : Iterable<Any> {
-            val n1 = artists(db, id)
-            return if (n1.count() != 0) {
-                n1
-            } else {
-                tracks(db, id)
-            }
-        }
-
-        val path = shortestPath(georgeharrison, dianaross, {at_neighbors(it)})
-        println(path)
-    }
-
-    fun <N> shortestPath(start: N, end: N, neighbors: (N) -> Iterable<N>): List<N>? {
+    /*
+    A bi-directional breadth-first search for shortest path. Uses the 'visted' maps to hold the partial paths.
+     */
+    fun <N> shortestPath(start: N, end: N, neighbors: (N) -> Iterable<N>): List<N> {
         val seenitstart = mutableMapOf(start to listOf(start))
         val seenitend = mutableMapOf(end to listOf(end));
         val qs = LinkedList(listOf(start))
         val qe = LinkedList(listOf(end))
 
         fun cons(item: N, list: List<N>): List<N> {
-            // not memory efficient as we don't have clojure-like persistent data structures, but the lists won't be long
+            // not memory efficient as we don't easily have clojure-like persistent data structures, but the lists won't be long
             val coll = ArrayList<N>(list.size + 1)
             coll.add(item)
             coll.addAll(list)
@@ -213,7 +180,7 @@ object Transitive {
         ) : List<N>? {
             val item = qworking.pop()
             if (seenother.contains(item)) {
-                return seenworking[item]!!.reversed().plus(seenother[item]!!.drop(1))
+                return seenitstart[item]!!.reversed().plus(seenitend[item]!!.drop(1))
             }
             val itempath = seenworking[item]!!
             for (next in neighbors(item)) {
@@ -232,21 +199,21 @@ object Transitive {
             } else {
                 takestep(qe, seenitend, seenitstart)
             }
-            if (path != null) {
-                return path
-            }
+
+            if (path != null) return path // found a path, we're done
         }
 
-        return null
+        return emptyList() // never found a path...
     }
 
     @JvmStatic
-    fun t(args: Array<String>) {
+    fun main(args: Array<String>) {
         val conn = Peer.connect("datomic:dev://localhost:4334/mbrainz-1968-1973")
         val db = conn.db()
         val rules = Util.readAll(rulessrc.reader())[0]
 
-        println("Collaborated with...")
+        println("Using 'transitive net' rules")
+        println("Collaborated with, 1 step away...")
         println(Peer.q(
                 "[:find ?aname ?aname2 :in $ % ?aname :where (collab ?aname ?aname2)]",
                 db, rules, "George Harrison"
@@ -262,6 +229,16 @@ object Transitive {
                 db, rules, "George Harrison"
         ))
 
-        // TODO: make a neighbors function that can bounce artist-album-artis
+        println("Using a double-ended shortest-path algorithm")
+        fun artist_id(name: String) = Peer.q("[:find ?e :in $ ?name :where [?e :artist/name ?name]]", db, name).first().first()
+        val george_harrison = artist_id("George Harrison")
+        val yvette_mimieux = artist_id("Yvette Mimieux")
+
+        println("George Harrison: $george_harrison")
+        println("Yvette Mimieux: $yvette_mimieux")
+
+        val path = shortestPath(george_harrison, yvette_mimieux, {at_neighbors(db, it)})
+        println(path)
+        println(path.map {item_name(db, it)})
     }
 }
